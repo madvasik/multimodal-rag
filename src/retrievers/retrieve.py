@@ -13,7 +13,6 @@ from PIL import Image
 from transformers import AutoModel, AutoTokenizer
 
 from src.llm import summarize_image
-
 from .base import BaseRetriever
 
 load_dotenv(override=True)
@@ -39,22 +38,19 @@ class BGERetriever(BaseRetriever):
         ).to(self.device)
         with torch.no_grad():
             outputs = self.model(**inputs)
-
         embeddings = outputs.last_hidden_state[:, 0, :]
-
         embeddings = embeddings.float().cpu()
         return embeddings
 
     def retrieve(self, query: str, top_k: int = 5) -> List[str]:
         query_embedding = self.embed_queries(query)
         top_k_docs = self.faiss_index.search(query_embedding, k=top_k)[1][0]
-
         metas = [self.meta[i] for i in top_k_docs]
         return [
             os.path.join(
                 bge_config.images_path,
-                unicodedata.normalize("NFC", meta['pdf']),
-                meta['jpeg']
+                unicodedata.normalize("NFC", meta["pdf"]),
+                meta["jpeg"]
             )
             for meta in metas
         ]
@@ -62,16 +58,12 @@ class BGERetriever(BaseRetriever):
     def _add_image_to_index(self, image_path: str) -> None:
         summary = summarize_image(image_path)
         embedding = self.embed_queries(summary)
-
         self.faiss_index.add(embedding)
         faiss.write_index(self.faiss_index, bge_config.faiss_path)
-
         pdf_name = image_path.split("/")[-2]
         pdf_name = unicodedata.normalize("NFC", pdf_name)
         image = image_path.split("/")[-1]
-
         self.meta.append({"pdf": pdf_name, "jpeg": image})
-
         with open(bge_config.metadata_path, "w", encoding="utf-8") as f:
             json.dump(self.meta, f, ensure_ascii=False)
 
@@ -112,15 +104,14 @@ class ColQwenRetriever:
     def retrieve(self, query: str, top_k: int = 5) -> List[str]:
         query_embedding = self.embed_queries(query)
         scores = self.processor.score_multi_vector(query_embedding, self.embeddings)
-        top_k_docs = scores.argsort(axis=1)[0][-self.top_k :]
+        top_k_docs = scores.argsort(axis=1)[0][-self.top_k:]
         top_k_docs = torch.flip(top_k_docs, dims=[0]).tolist()
         metas = [self.meta[i] for i in top_k_docs]
-
         return [
             os.path.join(
                 colqwen_config.images_path,
-                unicodedata.normalize("NFC", meta['pdf']),
-                meta['jpeg']
+                unicodedata.normalize("NFC", meta["pdf"]),
+                meta["jpeg"]
             )
             for meta in metas
         ]
@@ -135,21 +126,16 @@ class ColQwenRetriever:
                 pdf_name = image_path.split("/")[-2]
                 pdf_name = unicodedata.normalize("NFC", pdf_name)
                 jpeg_name = image_path.split("/")[-1]
-                self.meta.append(
-                    {
-                        "pdf": pdf_name,
-                        "jpeg": jpeg_name,
-                    }
-                )
+                self.meta.append({"pdf": pdf_name, "jpeg": jpeg_name})
                 with open(colqwen_config.metadata_path, "w", encoding="utf-8") as f:
                     json.dump(self.meta, f, ensure_ascii=False)
         except FileNotFoundError:
-            print(f"Error: The file {image_path} was not found.")
+            pass
 
     def _save_embeddings(self):
         for i in range(0, self.embeddings.shape[0], self.chunk_size):
             torch.save(
-                self.embeddings[i : i + self.chunk_size],
+                self.embeddings[i: i + self.chunk_size],
                 f"{colqwen_config.embeddings_path}/embeddings_{i}.pt",
             )
 
@@ -165,18 +151,10 @@ class RetrievePipeline:
         elif strategy == "ColQwen":
             images = self.colqwen_retriever.retrieve(query)
         elif strategy == "ColQwen+SummaryEmb":
-            # 1. Получаем топ-3 от ColQwen (УБЕДИТЕСЬ, ЧТО ЗДЕСЬ top_k=3)
             colqwen_top3_images = self.colqwen_retriever.retrieve(query, top_k=3)
-            # 2. Получаем топ-3 от BGE (УБЕДИТЕСЬ, ЧТО ЗДЕСЬ top_k=3)
             bge_top3_images = self.bge_retriever.retrieve(query, top_k=3)
-
-            # 3. Объединяем списки
             combined_images = colqwen_top3_images + bge_top3_images
-
-            # 4. Получаем уникальные пути и преобразуем обратно в список
             images = list(set(combined_images))
-            # (Опционально) Добавьте вывод для проверки прямо здесь:
-            # print(f"DEBUG: Combined unique images count: {len(images)}")
         else:
             images = []
         return images
