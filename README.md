@@ -1,108 +1,125 @@
-# Multimodal-RAG
+# Мультимодальная RAG система
 
----
+## Обзор проекта
 
-## Repository Structure
+Данный проект представляет собой систему для мультимодального поиска и генерации ответов (Retrieval-Augmented Generation, RAG), которая использует как текстовую, так и визуальную информацию для эффективного анализа и ответа на запросы пользователей. Система способна извлекать релевантные изображения и генерировать текстовые ответы с учетом визуального и текстового контекста.
 
-- `app.py`  
-  The main application file for launching the service.
+## Основная гипотеза проекта
 
-- `requirements.txt`  
-  A list of dependencies required for the project to work.
+Наша главная гипотеза заключается в том, что комбинирование текстовых и визуальных эмбеддингов значительно улучшает точность и качество мультимодального поиска. Интеграция данных из разных типов источников (текстовых описаний и изображений) обеспечивает более глубокое понимание контекста и повышает релевантность результатов.
 
-- `data/`  
-  Directory containing data for indexing and searching.
-  
-- `src/`  
-  Project source code.
-  - `llm/`  
-    Modules for working with large language models.
-  - `retrievers/`  
-    Modules for extracting relevant information.
-  - `utils.py`  
-    Helper functions and utilities.
+## Архитектура проекта
 
----
+### Структура репозитория
+multimodal-rag/
+│
+├── app.py # Основной файл приложения для запуска сервиса
+├── run_app.sh # Скрипт для быстрого запуска приложения
+├── requirements.txt # Список зависимостей проекта
+├── pyproject.toml # Конфигурация Python-проекта
+├── setup.cfg # Конфигурация для установки проекта
+│
+├── data/ # Директория с данными для индексирования и поиска
+│
+├── src/ # Исходный код проекта
+│ ├── init.py
+│ │
+│ ├── config/ # Конфигурационные файлы
+│ │ ├── bge_config.yaml # Конфигурация для текстовой модели
+│ │ └── colqwen_config.yaml # Конфигурация для визуальной модели
+│ │
+│ ├── llm/ # Модули для работы с языковой моделью
+│ │ ├── init.py
+│ │ ├── chat.py # API для генерации ответов через LLM
+│ │ └── prompt.yaml # Шаблоны промптов для языковой модели
+│ │
+│ ├── retrievers/ # Модули для извлечения релевантной информации
+│ │ ├── init.py
+│ │ ├── base.py # Базовые классы для ретриверов
+│ │ ├── build_bge_index.py # Модуль для создания текстовых индексов
+│ │ ├── build_colqwen_meta.py # Модуль для создания визуальных индексов
+│ │ └── retrieve.py # Основной модуль поисковой системы
+│ │
+│ └── utils.py # Вспомогательные функции и утилиты
 
-## Running
 
-To run the project, follow these steps:
+## Ключевые компоненты системы
 
-1. **Install poppler**
-    ```bash
-    !sudo apt-get install -y poppler-utils
-    ```
-    
-2. **Create and activate a virtual environment:**
-  
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-  
-3. **Install dependencies:**
+### 1. Индексирование и поиск данных
 
-    ```bash
-    pip install torch --index-url https://download.pytorch.org/whl/cu124
+#### Текстовый поиск (BGE)
+- Использует модель для создания эмбеддингов текстовых описаний
+- Индексирует текстовые эмбеддинги с использованием FAISS для эффективного поиска
+- Позволяет находить релевантные изображения на основе их текстовых описаний
 
-    pip install -r requirements.txt
-    ```
-4. **Add a `.env` file to the root of the project, contact us, we'll provide a key) tg @umbilnm**
+#### Визуальный поиск (ColQwen)
+- Использует модель Vision Transformer (ViT) для создания визуальных эмбеддингов изображений
+- Индексирует визуальные характеристики изображений для последующего поиска
+- Позволяет находить визуально похожие изображения на основе запросов пользователя
 
-5. **Run the application:**
-    
-    ```bash
-    streamlit run app.py
-    ```
-    
-6. **Access the application:**
-    
-    Open a web browser and navigate to `http://localhost:8000`.
+### 2. Мультимодальные стратегии поиска
 
----
+#### SummaryEmb
+Эта стратегия извлекает изображения с использованием текстовых эмбеддингов, полученных из описаний изображений (summary) через Pixtral-12b. Помогает учитывать текстовый контекст изображений, но напрямую не использует визуальную информацию.
 
-## Build and Launch Time
+#### ColQwen
+Визуальные эмбеддинги, полученные через модель ViT, используются для извлечения изображений, релевантных запросу. Эта стратегия позволяет учитывать исключительно визуальные характеристики изображений.
 
-1. **Installing dependencies:**  
-   - Takes about **2 minutes**.
+#### ColQwen+SummaryEmb
+Данная стратегия объединяет лучшие результаты текстовых и визуальных эмбеддингов, выбирая наиболее релевантные изображения из обоих подходов. Помогает эффективно решать задачи, требующие мультимодального анализа.
 
-2. **Launching the application:**  
-   - Instant launch after installing dependencies.
----
+### 3. Генерация ответов через языковую модель
 
-## Solution Overview
+- Интеграция с Pixtral-12b для генерации качественных текстовых ответов
+- Модуль формирования эффективных промптов на основе найденных изображений и запроса пользователя
+- Обработка как текстовой, так и визуальной информации для создания содержательных ответов
 
-Our project includes the following key components:
+## Web-интерфейс
 
-**Data Indexing**
-- Using **FAISS** for efficient embedding-based search.
-- Storing metadata and embeddings for quick access.
+Проект включает пользовательский интерфейс на базе Streamlit, который предоставляет:
+- Возможность ввода пользовательских запросов
+- Выбор стратегий поиска
+- Отображение найденных релевантных изображений
+- Отображение сгенерированных ответов
+- Сохранение истории чата
 
-**Working with LLM**
-- Integration with Pixtral-12b for generating responses.
+## Требования и запуск
 
-## Hypothesis: Combining Textual and Visual Embeddings to Enhance Multimodal Search
+### Требования
+- Python 3.11.6 или выше (согласно pyproject.toml)
+- Poppler (для работы с PDF-документами)
+- CUDA-совместимый GPU (рекомендуется для оптимальной производительности)
+- colpali-engine
+- PyTorch
+- Streamlit (≥1.41.1)
+- FAISS (faiss-cpu ≥1.9.0.post1)
+- Transformers
+- mistralai (≥1.3.1)
+- python-dotenv (≥1.0.1)
+- Pillow
+- NumPy
+- SciPy
+- tqdm
+- omegaconf (≥2.3.0)
+- pdf2image (≥1.17.0)
+- pyyaml (≥6.0.2)
 
-The main hypothesis of our solution is the assumption that combining embeddings from textual and visual modalities significantly improves the accuracy and quality of multimodal search. We believe that integrating data from different types of sources (text descriptions and images) provides a deeper understanding of context and increases the relevance of the results.
+### Запуск приложения
 
----
+```bash
+streamlit run app.py
+```
+или используйте скрипт:
+```bash
+./run_app.sh
+```
 
-### Our Approach: Strategies for Implementing the Hypothesis
+Откройте веб-браузер и перейдите по адресу `http://localhost:8501`.
 
-To test this hypothesis, we developed several strategies that allow for different combinations of textual and visual embeddings. Each of them represents a part of the overall approach to solving the multimodal search problem.
+## Время сборки и запуска
 
-#### 1. **SummaryEmb**
+1. **Установка зависимостей:**  
+   Занимает около **2-3 минут**.
 
-This strategy extracts images using textual embeddings obtained from image descriptions (summary) via Pixtral-12b. It helps account for the textual context of images but does not directly utilize visual information.
-
-#### 2. **ColQwen**
-
-Visual embeddings obtained through the ViT model are used to extract images relevant to the query. This strategy allows for considering exclusively the visual characteristics of images.
-
-#### 3. **Intersection**
-
-This strategy combines the results of both modalities by intersecting images found by textual and visual embeddings. This allows for considering both textual and visual relevance, which is important for multimodal queries.
-
-#### 4. **ColQwen+SummaryEmb**
-
-This strategy combines the top results of textual and visual embeddings, selecting the most relevant images from both approaches. It helps effectively solve tasks that require multimodal analysis.
+2. **Запуск приложения:**  
+   После установки зависимостей запуск происходит мгновенно.
