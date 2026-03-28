@@ -5,14 +5,20 @@ import json
 import os
 import sys
 import unicodedata
+from pathlib import Path
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
 load_dotenv(override=True)
 
 VISUAL_CFG = os.getenv("VISUAL_INDEX_CONFIG_PATH") or os.getenv("COLQWEN_CONFIG_PATH")
-if not VISUAL_CFG or not os.path.exists(VISUAL_CFG):
+if not VISUAL_CFG:
+    VISUAL_CFG = str(_REPO_ROOT / "src/config/visual_index.yaml")
+if not os.path.isfile(VISUAL_CFG):
+    print(f"Visual index config not found: {VISUAL_CFG}", file=sys.stderr)
     sys.exit(1)
 
 

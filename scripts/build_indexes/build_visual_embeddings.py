@@ -106,10 +106,7 @@ def main() -> None:
     cfg_path = args.config
     if cfg_path is None:
         env = os.getenv("VISUAL_INDEX_CONFIG_PATH") or os.getenv("COLQWEN_CONFIG_PATH")
-        if not env:
-            print("Set VISUAL_INDEX_CONFIG_PATH or pass --config", file=sys.stderr)
-            sys.exit(1)
-        cfg_path = Path(env)
+        cfg_path = Path(env) if env else root / "src/config/visual_index.yaml"
     cfg_path = cfg_path.resolve()
     if not cfg_path.is_file():
         print(f"Config not found: {cfg_path}", file=sys.stderr)

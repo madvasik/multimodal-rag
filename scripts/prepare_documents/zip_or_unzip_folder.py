@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -18,9 +19,19 @@ def zip_folder(folder: Path, zip_path: Path) -> None:
 
 
 def unzip_to_folder(zip_path: Path, folder: Path) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
+    dest_root = folder.resolve()
+    dest_root.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(folder)
+        for member in zf.infolist():
+            target = (dest_root / member.filename).resolve()
+            if not target.is_relative_to(dest_root):
+                raise ValueError(f"ZIP entry escapes destination: {member.filename!r}")
+            if member.is_dir() or member.filename.endswith("/"):
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member, "r") as src, open(target, "wb") as out:
+                shutil.copyfileobj(src, out)
 
 
 def main() -> None:

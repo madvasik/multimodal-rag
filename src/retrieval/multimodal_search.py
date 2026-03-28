@@ -21,15 +21,43 @@ from .retriever_base import BaseRetriever
 
 load_dotenv(override=True)
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_config_file(path: str) -> str:
+    p = Path(path).expanduser()
+    if not p.is_absolute():
+        p = (_REPO_ROOT / p).resolve()
+    else:
+        p = p.resolve()
+    if not p.is_file():
+        raise FileNotFoundError(f"Index config not found: {p}")
+    return str(p)
+
+
+def _abs_repo_path(p: str | Path) -> str:
+    path = Path(str(p)).expanduser()
+    if path.is_absolute():
+        return str(path.resolve())
+    return str((_REPO_ROOT / path).resolve())
+
+
 _text_cfg = os.getenv("TEXT_INDEX_CONFIG_PATH") or os.getenv("BGE_CONFIG_PATH")
 _visual_cfg = os.getenv("VISUAL_INDEX_CONFIG_PATH") or os.getenv("COLQWEN_CONFIG_PATH")
-if not _text_cfg or not _visual_cfg:
-    raise RuntimeError(
-        "Set TEXT_INDEX_CONFIG_PATH and VISUAL_INDEX_CONFIG_PATH "
-        "(или устаревшие BGE_CONFIG_PATH / COLQWEN_CONFIG_PATH)."
-    )
-text_index = OmegaConf.load(_text_cfg)
-visual_index = OmegaConf.load(_visual_cfg)
+if not _text_cfg:
+    _text_cfg = str(_REPO_ROOT / "src/config/text_index.yaml")
+if not _visual_cfg:
+    _visual_cfg = str(_REPO_ROOT / "src/config/visual_index.yaml")
+
+text_index = OmegaConf.load(_resolve_config_file(_text_cfg))
+visual_index = OmegaConf.load(_resolve_config_file(_visual_cfg))
+
+for _key in ("faiss_path", "metadata_path", "images_path"):
+    if _key in text_index:
+        text_index[_key] = _abs_repo_path(text_index[_key])
+for _key in ("metadata_path", "images_path", "embeddings_path"):
+    if _key in visual_index:
+        visual_index[_key] = _abs_repo_path(visual_index[_key])
 
 
 def _sorted_embedding_shard_paths(embeddings_dir: str) -> List[str]:
@@ -95,7 +123,7 @@ class BGERetriever(BaseRetriever):
                 "Rebuild the text index."
             )
 
-    def embed_queries(self, query: str | List[str]) -> torch.tensor:
+    def embed_queries(self, query: str | List[str]) -> torch.Tensor:
         if isinstance(query, str):
             query = [query]
         inputs = self.tokenizer(
@@ -157,8 +185,13 @@ class ColQwenRetriever:
         emb_dir = visual_index.embeddings_path
         for fp in _sorted_embedding_shard_paths(emb_dir):
             self.embeddings.extend(_load_shard_rows(fp))
+        if len(self.embeddings) != len(self.meta):
+            raise RuntimeError(
+                f"Visual index: {len(self.embeddings)} embedding row(s) != "
+                f"{len(self.meta)} metadata row(s). Rebuild shards or docs_meta.json."
+            )
 
-    def embed_queries(self, query: str | List[str]) -> torch.tensor:
+    def embed_queries(self, query: str | List[str]) -> torch.Tensor:
         if isinstance(query, str):
             query = [query]
         batch_queries = self.processor.process_queries(query).to(self.model.device)
@@ -166,7 +199,7 @@ class ColQwenRetriever:
             outputs = self.model(**batch_queries).to(torch.float32)
         return outputs.cpu()
 
-    def embed_image(self, image: Image.Image) -> torch.tensor:
+    def embed_image(self, image: Image.Image) -> torch.Tensor:
         batch_images = self.processor.process_images(image).to(self.model.device)
         with torch.no_grad():
             outputs = self.model(**batch_images).to(torch.float32)
@@ -196,7 +229,7 @@ class ColQwenRetriever:
     def _add_image_to_index(self, image_path: str) -> None:
         try:
             with open(image_path, "rb") as f:
-                img = Image.open(f)
+                img = Image.open(f).convert("RGB")
                 embedding = self.embed_image(img)
             self.embeddings.append(embedding)
             self._save_embeddings()

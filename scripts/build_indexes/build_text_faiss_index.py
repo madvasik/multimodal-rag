@@ -20,13 +20,17 @@ if str(_REPO_ROOT) not in sys.path:
 
 try:
     from src.mistral_api import summarize_image
-except ImportError:
+except ImportError as e:
+    print(f"Import error (run from repo root, pip install -e .): {e}", file=sys.stderr)
     sys.exit(1)
 
 load_dotenv(override=True)
 
 TEXT_CFG = os.getenv("TEXT_INDEX_CONFIG_PATH") or os.getenv("BGE_CONFIG_PATH")
-if not TEXT_CFG or not os.path.exists(TEXT_CFG):
+if not TEXT_CFG:
+    TEXT_CFG = str(_REPO_ROOT / "src/config/text_index.yaml")
+if not os.path.isfile(TEXT_CFG):
+    print(f"Text index config not found: {TEXT_CFG}", file=sys.stderr)
     sys.exit(1)
 
 DEVICE = "cpu"

@@ -1,7 +1,10 @@
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from mistralai.client import Mistral
+try:
+    from mistralai.client import Mistral
+except ImportError:  # pragma: no cover
+    from mistralai import Mistral
 
 from src.utils import encode_image, image_data_url, load_prompts_from_yaml
 
@@ -39,7 +42,10 @@ def _ensure_prompts_and_model() -> tuple[dict, str]:
     return _prompts, _model
 
 
-def chat(chat_history: List[Dict], images: List[str] = None):
+def chat(
+    chat_history: List[Dict[str, Any]],
+    images: Optional[List[str]] = None,
+) -> str:
     prompts, model = _ensure_prompts_and_model()
     client = _ensure_mistral_client()
     messages = [
@@ -58,10 +64,14 @@ def chat(chat_history: List[Dict], images: List[str] = None):
                 }
             )
     chat_response = client.chat.complete(model=model, messages=messages)
-    return chat_response.choices[0].message.content
+    choices = chat_response.choices
+    if not choices:
+        return ""
+    content = choices[0].message.content
+    return "" if content is None else str(content)
 
 
-def summarize_image(image_path: str):
+def summarize_image(image_path: str) -> str:
     """
     Отправляет изображение в модель Pixtral-12B для суммаризации.
     """
@@ -88,4 +98,8 @@ def summarize_image(image_path: str):
     ]
 
     chat_response = client.chat.complete(model=model, messages=messages)
-    return chat_response.choices[0].message.content
+    choices = chat_response.choices
+    if not choices:
+        return ""
+    content = choices[0].message.content
+    return "" if content is None else str(content)

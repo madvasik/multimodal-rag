@@ -1,5 +1,6 @@
 import base64
 import os
+from pathlib import Path
 
 import yaml
 from pdf2image import convert_from_path
@@ -9,10 +10,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def encode_image(image_path) -> str | None:
+def encode_image(image_path: str | Path | os.PathLike[str]) -> str | None:
     """Encode the image to base64."""
     try:
-        with open(image_path, "rb") as image_file:
+        with open(os.fspath(image_path), "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
     except FileNotFoundError:
         print(f"Error: The file {image_path} was not found.")
@@ -49,4 +50,7 @@ def pdf_to_images(pdf_path: str) -> None:
 
 def load_prompts_from_yaml(yaml_path: str) -> dict:
     with open(yaml_path, "r", encoding="utf-8") as f:
-        return yaml.load(f, Loader=yaml.FullLoader)
+        data = yaml.load(f, Loader=yaml.SafeLoader)
+    if not isinstance(data, dict):
+        raise ValueError(f"Prompts YAML must be a mapping: {yaml_path}")
+    return data
