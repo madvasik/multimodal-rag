@@ -1,110 +1,107 @@
 # Мультимодальная RAG система
 
-## Обзор проекта
+## Обзор
 
-Данный проект представляет собой систему для мультимодального поиска и генерации ответов (Retrieval-Augmented Generation, RAG), которая использует как текстовую, так и визуальную информацию для эффективного анализа и ответа на запросы пользователей. Система способна извлекать релевантные изображения и генерировать текстовые ответы с учетом визуального и текстового контекста.
+Два типа эмбеддингов для поиска по страницам документов (PNG):
 
-## Основная гипотеза проекта
+| Тип | Как устроено | Файлы / модули | Стратегия в UI |
+|-----|----------------|----------------|----------------|
+| **Текстовые** | BGE по саммари страниц (Mistral смотрит картинку → текст → BGE → FAISS) | `build_text_faiss_index.py`, `BGERetriever` | **SummaryEmb** |
+| **Визуальные** | ColQwen по пикселям | `build_visual_embeddings.py`, `ColQwenRetriever` | **ColQwen** |
 
-Главная гипотеза заключается в том, что комбинирование текстовых и визуальных эмбеддингов значительно улучшает точность и качество мультимодального поиска. Интеграция данных из разных типов источников (текстовых описаний и изображений) обеспечивает более глубокое понимание контекста и повышает релевантность результатов.
+**ColQwen+SummaryEmb** — оба канала. Чат и саммари страниц — **Mistral** (`src/mistral_api/`). Запуск UI: **Docker** или локально `streamlit`.
 
-## Архитектура проекта
+## Структура репозитория
 
-### Структура репозитория
-```
+```text
 multimodal-rag/
-├── app.py                  # Основной файл приложения для запуска сервиса
-├── run_app.sh              # Скрипт для быстрого запуска приложения
-├── pyproject.toml          # Конфигурация Python-проекта         
-
-├── data/                   # Директория с данными для индексирования и поиска
-
-├── src/                    # Исходный код проекта
-│   ├── __init__.py
-│   ├── config/             # Конфигурационные файлы
-│   │   ├── bge_config.yaml         # Конфигурация для текстовой модели
-│   │   └── colqwen_config.yaml     # Конфигурация для визуальной модели
-│   ├── llm/                # Модули для работы с языковой моделью
-│   │   ├── chat.py                 # API для генерации ответов через LLM
-│   │   └── prompt.yaml             # Шаблоны промптов
-│   ├── retrievers/         # Модули для извлечения релевантной информации
-│   │   ├── base.py                 # Базовые классы для ретриверов
-│   │   ├── build_bge_index.py      # Создание текстовых индексов
-│   │   ├── build_colqwen_meta.py   # Создание визуальных индексов
-│   │   └── retrieve.py             # Основной модуль поисковой системы
-│   └── utils.py            # Вспомогательные функции и утилиты
+├── streamlit_ui/
+│   └── app.py                  # точка входа Streamlit
+├── scripts/
+│   ├── prepare_documents/      # подготовка PDF/DOCX, zip
+│   │   ├── sort_loose_pdfs_docx.py
+│   │   ├── pdf_to_images.py
+│   │   └── zip_or_unzip_folder.py
+│   ├── build_indexes/          # сборка индексов
+│   │   └── build_visual_embeddings.py
+│   └── decompress_json_gz.py
+├── src/
+│   ├── config/
+│   │   ├── text_index.yaml     # FAISS + BGE (текстовый канал)
+│   │   └── visual_index.yaml   # ColQwen (визуальный канал)
+│   ├── mistral_api/            # чат, summarize_image, prompts.yaml
+│   └── retrieval/              # пайплайн поиска, FAISS, ColQwen
+│       ├── multimodal_search.py
+│       ├── build_text_faiss_index.py
+│       └── build_visual_metadata.py
+├── data/
+│   ├── images/                 # PNG по папкам документов
+│   ├── index_text/             # FAISS + meta (текстовый индекс)
+│   └── index_visual/           # эмбеддинги + meta (визуальный индекс)
+├── Dockerfile
+├── docker-compose.yml
+├── docker-compose.gpu.yml
+└── run_app.sh
 ```
 
+## Переменные окружения
 
-## Ключевые компоненты системы
+| Переменная | Назначение |
+|------------|------------|
+| `TEXT_INDEX_CONFIG_PATH` | YAML текстового индекса (BGE + FAISS) |
+| `VISUAL_INDEX_CONFIG_PATH` | YAML визуального индекса (ColQwen) |
+| `PROMPTS_PATH` | `src/mistral_api/prompts.yaml` |
+| `MISTRAL_API_KEY` | ключ API |
+| `MODEL_NAME` | vision-модель (напр. `pixtral-12b-2409`) |
 
-### 1. Индексирование и поиск данных
+Поддерживаются устаревшие имена: `BGE_CONFIG_PATH` → текстовый YAML, `COLQWEN_CONFIG_PATH` → визуальный YAML.
 
-#### Текстовый поиск (BGE)
-- Использует модель для создания эмбеддингов текстовых описаний
-- Индексирует текстовые эмбеддинги с использованием FAISS для эффективного поиска
-- Позволяет находить релевантные изображения на основе их текстовых описаний
-
-#### Визуальный поиск (ColQwen)
-- Использует модель Vision Transformer (ViT) для создания визуальных эмбеддингов изображений
-- Индексирует визуальные характеристики изображений для последующего поиска
-- Позволяет находить визуально похожие изображения на основе запросов пользователя
-
-### 2. Мультимодальные стратегии поиска
-
-#### SummaryEmb
-Эта стратегия извлекает изображения с использованием текстовых эмбеддингов, полученных из описаний изображений (summary) через Pixtral-12b. Помогает учитывать текстовый контекст изображений, но напрямую не использует визуальную информацию.
-
-#### ColQwen
-Визуальные эмбеддинги, полученные через модель ViT, используются для извлечения изображений, релевантных запросу. Эта стратегия позволяет учитывать исключительно визуальные характеристики изображений.
-
-#### ColQwen+SummaryEmb
-Данная стратегия объединяет лучшие результаты текстовых и визуальных эмбеддингов, выбирая наиболее релевантные изображения из обоих подходов. Помогает эффективно решать задачи, требующие мультимодального анализа.
-
-### 3. Генерация ответов через языковую модель
-
-- Интеграция с Pixtral-12b для генерации качественных текстовых ответов
-- Модуль формирования эффективных промптов на основе найденных изображений и запроса пользователя
-- Обработка как текстовой, так и визуальной информации для создания содержательных ответов
-
-## Web-интерфейс
-
-Проект включает пользовательский интерфейс на базе Streamlit, который предоставляет:
-- Возможность ввода пользовательских запросов
-- Выбор стратегий поиска
-- Отображение найденных релевантных изображений
-- Отображение сгенерированных ответов
-- Сохранение истории чата
-
-## Требования и запуск
-
-### Требования
-- Python 3.11.6 или выше (согласно pyproject.toml)
-- Poppler (для работы с PDF-документами)
-- CUDA-совместимый GPU (рекомендуется для оптимальной производительности)
-- colpali-engine
-- PyTorch
-- Streamlit (≥1.41.1)
-- FAISS (faiss-cpu ≥1.9.0.post1)
-- Transformers
-- mistralai (≥1.3.1)
-- python-dotenv (≥1.0.1)
-- Pillow
-- NumPy
-- SciPy
-- tqdm
-- omegaconf (≥2.3.0)
-- pdf2image (≥1.17.0)
-- pyyaml (≥6.0.2)
-
-### Запуск приложения
+## Быстрый старт (Docker)
 
 ```bash
-streamlit run app.py
-```
-или используйте скрипт:
-```bash
+cp .env.example .env
+# укажите MISTRAL_API_KEY в .env
 ./run_app.sh
 ```
 
-Откройте веб-браузер и перейдите по адресу `http://localhost:8501`.
+Порт **8501**. В контейнере пути к конфигам задаёт `docker-compose.yml` (`/app/src/config/...`).
+
+### GPU (NVIDIA, Linux)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+## Локально
+
+```bash
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -U pip && pip install -e .
+cp .env.example .env
+streamlit run streamlit_ui/app.py
+```
+
+## Пайплайн индексов
+
+```bash
+python scripts/prepare_documents/sort_loose_pdfs_docx.py --work-dir .
+python scripts/prepare_documents/pdf_to_images.py --pdf-dir path/to/pdf_files --output-dir data/images
+
+python scripts/build_indexes/build_visual_embeddings.py
+python src/retrieval/build_visual_metadata.py
+
+python src/retrieval/build_text_faiss_index.py
+```
+
+В Docker: `docker compose run --rm app python <команда>`.
+
+Распаковка `*.json.gz` в каталоге:
+
+```bash
+python scripts/decompress_json_gz.py --input-dir path/to/dir --output-dir path/to/out
+```
+
+## Проверка
+
+- `python -m compileall src scripts streamlit_ui`
+- `python -c "from src.retrieval import RetrievePipeline"`

@@ -1,0 +1,6 @@
+# Optional: NVIDIA GPU. Example:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+# Requires nvidia-container-toolkit. On Docker Desktop for Mac, GPU passthrough is usually unavailable.
+services:
+  app:
+    gpus: all

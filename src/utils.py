@@ -2,15 +2,11 @@ import base64
 import os
 
 import yaml
-from mistralai import Mistral
 from pdf2image import convert_from_path
 
 from dotenv import load_dotenv
-load_dotenv()
 
-model = os.getenv("MODEL_NAME")
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-client = Mistral(api_key=MISTRAL_API_KEY)
+load_dotenv()
 
 
 def encode_image(image_path) -> str | None:

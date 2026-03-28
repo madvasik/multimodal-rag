@@ -1,0 +1,5 @@
+model_name: vidore/colqwen2-v1.0-merged
+metadata_path: data/index_visual/docs_meta.json
+images_path: data/images
+embeddings_path: data/index_visual/embeddings
+top_k: 3

@@ -8,21 +8,22 @@ import sys
 
 load_dotenv(override=True)
 
-COLQWEN_CONFIG_PATH = os.getenv("COLQWEN_CONFIG_PATH")
-if not COLQWEN_CONFIG_PATH or not os.path.exists(COLQWEN_CONFIG_PATH):
+VISUAL_CFG = os.getenv("VISUAL_INDEX_CONFIG_PATH") or os.getenv("COLQWEN_CONFIG_PATH")
+if not VISUAL_CFG or not os.path.exists(VISUAL_CFG):
     sys.exit(1)
+
 
 def build_metadata():
     try:
-        colqwen_config = OmegaConf.load(COLQWEN_CONFIG_PATH)
+        visual_index = OmegaConf.load(VISUAL_CFG)
     except Exception:
         sys.exit(1)
 
     required_keys = ["images_path", "metadata_path", "embeddings_path"]
-    if not all(key in colqwen_config for key in required_keys):
+    if not all(key in visual_index for key in required_keys):
         sys.exit(1)
 
-    base_images_path = colqwen_config.images_path
+    base_images_path = visual_index.images_path
     if not os.path.isdir(base_images_path):
         sys.exit(1)
 
@@ -31,7 +32,7 @@ def build_metadata():
     except OSError:
         sys.exit(1)
 
-    meta_dir = os.path.dirname(colqwen_config.metadata_path)
+    meta_dir = os.path.dirname(visual_index.metadata_path)
     try:
         os.makedirs(meta_dir, exist_ok=True)
     except OSError:
@@ -58,13 +59,13 @@ def build_metadata():
 
     if metadata:
         try:
-            with open(colqwen_config.metadata_path, "w", encoding="utf-8") as f:
+            with open(visual_index.metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, ensure_ascii=False, indent=4)
         except Exception:
             pass
 
     try:
-        embedding_files = sorted(glob.glob(os.path.join(colqwen_config.embeddings_path, "*.pt")))
+        embedding_files = sorted(glob.glob(os.path.join(visual_index.embeddings_path, "*.pt")))
         if embedding_files:
             if len(metadata) != total_images_processed:
                 print(f"Предупреждение: {len(metadata)} записей в метаданных, {total_images_processed} PNG файлов.")
@@ -72,6 +73,7 @@ def build_metadata():
             print("Предупреждение: Файлы эмбеддингов не найдены.")
     except Exception:
         pass
+
 
 if __name__ == "__main__":
     build_metadata()

@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      VISUAL_INDEX_CONFIG_PATH: /app/src/config/visual_index.yaml
+      TEXT_INDEX_CONFIG_PATH: /app/src/config/text_index.yaml
+      PROMPTS_PATH: /app/src/mistral_api/prompts.yaml
+      MODEL_NAME: ${MODEL_NAME:-pixtral-12b-2409}

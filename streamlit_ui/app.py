@@ -1,11 +1,14 @@
 import os
 
-import streamlit as st
-import torch
 from dotenv import load_dotenv
 
-from src.llm import chat
-from src.retrievers import RetrievePipeline
+load_dotenv(override=True)
+
+import streamlit as st
+import torch
+
+from src.mistral_api import chat
+from src.retrieval import RetrievePipeline
 
 st.set_page_config(layout="wide")
 
@@ -17,15 +20,13 @@ device = torch.device(
     else "mps" if torch.backends.mps.is_available() else "cpu"
 )
 
-load_dotenv(override=True)
-
 
 @st.cache_resource
-def init_retrieve_pipeline(device: str) -> RetrievePipeline:
-    return RetrievePipeline(device=device)
+def init_retrieve_pipeline(device_str: str) -> RetrievePipeline:
+    return RetrievePipeline(device=device_str)
 
 
-retrieve_pipe = init_retrieve_pipeline(device)
+retrieve_pipe = init_retrieve_pipeline(str(device))
 
 
 def initialize_session_states() -> None:

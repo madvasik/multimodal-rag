@@ -15,29 +15,30 @@ project_root = os.path.dirname(os.path.dirname(script_dir))
 sys.path.append(project_root)
 
 try:
-    from src.llm import summarize_image
+    from src.mistral_api import summarize_image
 except ImportError:
     sys.exit(1)
 
 load_dotenv(override=True)
 
-BGE_CONFIG_PATH = os.getenv("BGE_CONFIG_PATH")
-if not BGE_CONFIG_PATH or not os.path.exists(BGE_CONFIG_PATH):
+TEXT_CFG = os.getenv("TEXT_INDEX_CONFIG_PATH") or os.getenv("BGE_CONFIG_PATH")
+if not TEXT_CFG or not os.path.exists(TEXT_CFG):
     sys.exit(1)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 def build_index():
     try:
-        bge_config = OmegaConf.load(BGE_CONFIG_PATH)
+        text_index = OmegaConf.load(TEXT_CFG)
     except Exception:
         sys.exit(1)
 
     required_keys = ["model_name", "images_path", "faiss_path", "metadata_path"]
-    if not all(key in bge_config for key in required_keys):
+    if not all(key in text_index for key in required_keys):
         sys.exit(1)
 
-    base_images_path = bge_config.images_path
+    base_images_path = text_index.images_path
     if not os.path.isdir(base_images_path):
         sys.exit(1)
 
@@ -46,8 +47,8 @@ def build_index():
     except OSError:
         sys.exit(1)
 
-    faiss_dir = os.path.dirname(bge_config.faiss_path)
-    meta_dir = os.path.dirname(bge_config.metadata_path)
+    faiss_dir = os.path.dirname(text_index.faiss_path)
+    meta_dir = os.path.dirname(text_index.metadata_path)
     try:
         os.makedirs(faiss_dir, exist_ok=True)
         os.makedirs(meta_dir, exist_ok=True)
@@ -55,8 +56,8 @@ def build_index():
         sys.exit(1)
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(bge_config.model_name)
-        model = AutoModel.from_pretrained(bge_config.model_name).to(DEVICE)
+        tokenizer = AutoTokenizer.from_pretrained(text_index.model_name)
+        model = AutoModel.from_pretrained(text_index.model_name).to(DEVICE)
         model.eval()
     except Exception:
         sys.exit(1)
@@ -109,18 +110,19 @@ def build_index():
         embeddings_matrix = np.vstack(all_embeddings)
         index.add(embeddings_matrix)
         try:
-            faiss.write_index(index, bge_config.faiss_path)
+            faiss.write_index(index, text_index.faiss_path)
         except Exception:
             pass
 
         if len(metadata) == index.ntotal:
             try:
-                with open(bge_config.metadata_path, "w", encoding="utf-8") as f:
+                with open(text_index.metadata_path, "w", encoding="utf-8") as f:
                     json.dump(metadata, f, ensure_ascii=False, indent=4)
             except Exception:
                 pass
     else:
         pass
+
 
 if __name__ == "__main__":
     build_index()
