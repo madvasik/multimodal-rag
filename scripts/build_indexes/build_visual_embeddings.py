@@ -22,19 +22,6 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _pick_device() -> str:
-    if torch.cuda.is_available():
-        return "cuda"
-    if torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
-
-
-def _clear_cache() -> None:
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-
 def build_embeddings(config_path: Path, device: str | None) -> None:
     root = _project_root()
     os.chdir(root)
@@ -51,10 +38,10 @@ def build_embeddings(config_path: Path, device: str | None) -> None:
         sys.exit(1)
     emb_dir.mkdir(parents=True, exist_ok=True)
 
-    dev = device or _pick_device()
+    dev = device or "cpu"
     model = ColQwen2.from_pretrained(
         cfg.model_name,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float32,
         device_map=dev,
     )
     processor = ColQwen2Processor.from_pretrained(cfg.model_name)
@@ -73,8 +60,7 @@ def build_embeddings(config_path: Path, device: str | None) -> None:
                     img = img.convert("RGB")
                     batch = processor.process_images(img).to(model.device)
                     with torch.no_grad():
-                        out = model(**batch).to(torch.bfloat16)
-                    _clear_cache()
+                        out = model(**batch).to(torch.float32)
                     all_tensors.append(out.cpu())
             except OSError as e:
                 print(f"Skip {image_path}: {e}", file=sys.stderr)
@@ -113,7 +99,7 @@ def main() -> None:
     p.add_argument(
         "--device",
         default=None,
-        help="cuda | mps | cpu (default: auto)",
+        help="Force device (default: cpu)",
     )
     args = p.parse_args()
 

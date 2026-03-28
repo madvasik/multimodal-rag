@@ -22,6 +22,19 @@ def encode_image(image_path) -> str | None:
         return None
 
 
+def image_mime_type(image_path: str) -> str:
+    ext = os.path.splitext(image_path)[1].lower()
+    if ext == ".png":
+        return "image/png"
+    if ext in (".jpg", ".jpeg"):
+        return "image/jpeg"
+    return "image/jpeg"
+
+
+def image_data_url(image_path: str, b64: str) -> str:
+    return f"data:{image_mime_type(image_path)};base64,{b64}"
+
+
 def pdf_to_images(pdf_path: str) -> None:
     pdf_name = pdf_path.split("/")[-1].replace(".pdf", "")
     out_folder = "data/images/" + pdf_name

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 
 from mistralai.client import Mistral
 
-from src.utils import encode_image, load_prompts_from_yaml
+from src.utils import encode_image, image_data_url, load_prompts_from_yaml
 
 _client: Optional[Mistral] = None
 _prompts: Optional[dict] = None
@@ -54,7 +54,7 @@ def chat(chat_history: List[Dict], images: List[str] = None):
             messages[-1]["content"].append(
                 {
                     "type": "image_url",
-                    "image_url": f"data:image/jpeg;base64,{base64_image}",
+                    "image_url": image_data_url(image_path, base64_image),
                 }
             )
     chat_response = client.chat.complete(model=model, messages=messages)
@@ -71,14 +71,17 @@ def summarize_image(image_path: str):
     if not base64_image:
         raise RuntimeError(f"Не удалось прочитать изображение: {image_path}")
     messages = [
-        {"role": "system", "content": prompts["summary"]},
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": prompts["summary"]}],
+        },
         {
             "role": "user",
             "content": [
                 {"type": "text", "text": "summary"},
                 {
                     "type": "image_url",
-                    "image_url": f"data:image/jpeg;base64,{base64_image}",
+                    "image_url": image_data_url(image_path, base64_image),
                 },
             ],
         },

@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 import streamlit as st
-import torch
 
 from src.mistral_api import chat
 from src.retrieval import RetrievePipeline
@@ -14,19 +13,16 @@ st.set_page_config(layout="wide")
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
-device = torch.device(
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps" if torch.backends.mps.is_available() else "cpu"
+_INIT_HINT = (
+    "Нужны: PNG в `data/images/<документ>/`, файл `data/index_text/faiss_index.bin`, "
+    "шарды `data/index_visual/embeddings/embeddings_*.pt` и согласованный `docs_meta.json`. "
+    "Сборка: `scripts/build_indexes/` и раздел «Пайплайн индексов» в README."
 )
 
 
 @st.cache_resource
-def init_retrieve_pipeline(device_str: str) -> RetrievePipeline:
-    return RetrievePipeline(device=device_str)
-
-
-retrieve_pipe = init_retrieve_pipeline(str(device))
+def load_retrieve_pipeline() -> RetrievePipeline:
+    return RetrievePipeline(device="cpu")
 
 
 def initialize_session_states() -> None:
@@ -60,7 +56,7 @@ def display_chat_history() -> None:
                 st.markdown("**Ответ:**\n" + answer_text.lstrip())
 
 
-def handle_user_query(query: str, strategy: str) -> None:
+def handle_user_query(query: str, strategy: str, retrieve_pipe: RetrievePipeline) -> None:
     st.session_state["messages"].append({"role": "user", "content": query})
     with st.chat_message("user"):
         st.markdown(query)
@@ -93,12 +89,18 @@ def main():
         st.session_state.messages = []
         st.rerun()
 
+    try:
+        retrieve_pipe = load_retrieve_pipeline()
+    except Exception as e:
+        st.error(f"Не удалось загрузить пайплайн поиска:\n\n`{e}`\n\n{_INIT_HINT}")
+        st.stop()
+
     strategy = sidebar_strategy_selector()
     display_chat_history()
     user_query = st.chat_input("Введите запрос для мультимодального поиска")
 
     if user_query:
-        handle_user_query(user_query, strategy)
+        handle_user_query(user_query, strategy, retrieve_pipe)
         st.rerun()
 
 

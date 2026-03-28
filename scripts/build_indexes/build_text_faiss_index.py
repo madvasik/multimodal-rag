@@ -1,18 +1,22 @@
-import os
+"""Build FAISS text index (BGE on Mistral page summaries). Run from repo root."""
+
 import glob
 import json
-import faiss
-import torch
-import unicodedata
-from transformers import AutoModel, AutoTokenizer
-from omegaconf import OmegaConf
-from dotenv import load_dotenv
+import os
 import sys
-import numpy as np
+import unicodedata
+from pathlib import Path
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(script_dir))
-sys.path.append(project_root)
+import faiss
+import numpy as np
+import torch
+from dotenv import load_dotenv
+from omegaconf import OmegaConf
+from transformers import AutoModel, AutoTokenizer
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 try:
     from src.mistral_api import summarize_image
@@ -25,10 +29,10 @@ TEXT_CFG = os.getenv("TEXT_INDEX_CONFIG_PATH") or os.getenv("BGE_CONFIG_PATH")
 if not TEXT_CFG or not os.path.exists(TEXT_CFG):
     sys.exit(1)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = "cpu"
 
 
-def build_index():
+def build_index() -> None:
     try:
         text_index = OmegaConf.load(TEXT_CFG)
     except Exception:
@@ -43,7 +47,11 @@ def build_index():
         sys.exit(1)
 
     try:
-        pdf_names = [d for d in os.listdir(base_images_path) if os.path.isdir(os.path.join(base_images_path, d))]
+        pdf_names = [
+            d
+            for d in os.listdir(base_images_path)
+            if os.path.isdir(os.path.join(base_images_path, d))
+        ]
     except OSError:
         sys.exit(1)
 
@@ -88,7 +96,11 @@ def build_index():
                     continue
 
                 inputs = tokenizer(
-                    [summary], return_tensors="pt", padding=True, truncation=True, max_length=512
+                    [summary],
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=512,
                 ).to(DEVICE)
                 with torch.no_grad():
                     outputs = model(**inputs)
@@ -120,8 +132,6 @@ def build_index():
                     json.dump(metadata, f, ensure_ascii=False, indent=4)
             except Exception:
                 pass
-    else:
-        pass
 
 
 if __name__ == "__main__":

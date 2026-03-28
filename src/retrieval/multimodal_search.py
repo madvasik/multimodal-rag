@@ -7,6 +7,7 @@ from typing import List
 import unicodedata
 
 import faiss
+import numpy as np
 import torch
 from colpali_engine.models import ColQwen2, ColQwen2Processor
 from dotenv import load_dotenv
@@ -70,14 +71,29 @@ def _rows_for_cat(embeddings: List[torch.Tensor]) -> List[torch.Tensor]:
     return out
 
 
+def _tensor_to_faiss_numpy(embedding: torch.Tensor) -> np.ndarray:
+    """FAISS Python API expects float32 numpy, contiguous."""
+    return np.ascontiguousarray(embedding.detach().cpu().numpy().astype(np.float32))
+
+
 class BGERetriever(BaseRetriever):
-    def __init__(self, device: str = "mps"):
+    def __init__(self, device: str = "cpu"):
         self.device = device
+        if not os.path.isfile(text_index.faiss_path):
+            raise FileNotFoundError(
+                f"FAISS index not found: {text_index.faiss_path}. "
+                "Run: python scripts/build_indexes/build_text_faiss_index.py"
+            )
         self.tokenizer = AutoTokenizer.from_pretrained(text_index.model_name)
         self.model = AutoModel.from_pretrained(text_index.model_name).to(self.device)
         self.faiss_index = faiss.read_index(text_index.faiss_path)
         with open(text_index.metadata_path, "r", encoding="utf-8") as f:
             self.meta = json.load(f)
+        if self.faiss_index.ntotal != len(self.meta):
+            raise RuntimeError(
+                f"FAISS ntotal ({self.faiss_index.ntotal}) != len(metadata) ({len(self.meta)}). "
+                "Rebuild the text index."
+            )
 
     def embed_queries(self, query: str | List[str]) -> torch.tensor:
         if isinstance(query, str):
@@ -93,21 +109,27 @@ class BGERetriever(BaseRetriever):
 
     def retrieve(self, query: str, top_k: int = 5) -> List[str]:
         query_embedding = self.embed_queries(query)
-        top_k_docs = self.faiss_index.search(query_embedding, k=top_k)[1][0]
-        metas = [self.meta[i] for i in top_k_docs]
-        return [
-            os.path.join(
-                text_index.images_path,
-                unicodedata.normalize("NFC", meta["pdf"]),
-                meta["jpeg"],
+        q = _tensor_to_faiss_numpy(query_embedding)
+        _, indices = self.faiss_index.search(q, k=top_k)
+        rows = indices[0]
+        paths: List[str] = []
+        for i in rows:
+            if i < 0 or i >= len(self.meta):
+                continue
+            meta = self.meta[i]
+            paths.append(
+                os.path.join(
+                    text_index.images_path,
+                    unicodedata.normalize("NFC", meta["pdf"]),
+                    meta["jpeg"],
+                )
             )
-            for meta in metas
-        ]
+        return paths
 
     def _add_image_to_index(self, image_path: str) -> None:
         summary = summarize_image(image_path)
         embedding = self.embed_queries(summary)
-        self.faiss_index.add(embedding)
+        self.faiss_index.add(_tensor_to_faiss_numpy(embedding))
         faiss.write_index(self.faiss_index, text_index.faiss_path)
         pdf_name = image_path.split("/")[-2]
         pdf_name = unicodedata.normalize("NFC", pdf_name)
@@ -118,11 +140,12 @@ class BGERetriever(BaseRetriever):
 
 
 class ColQwenRetriever:
-    def __init__(self, device: str = "mps"):
+    def __init__(self, device: str = "cpu"):
         self.device = device
+        dtype = torch.float32
         self.model = ColQwen2.from_pretrained(
             visual_index.model_name,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=dtype,
             device_map=self.device,
         )
         self.chunk_size = 500
@@ -135,28 +158,27 @@ class ColQwenRetriever:
         for fp in _sorted_embedding_shard_paths(emb_dir):
             self.embeddings.extend(_load_shard_rows(fp))
 
-    def _maybe_clear_cuda_cache(self) -> None:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
     def embed_queries(self, query: str | List[str]) -> torch.tensor:
         if isinstance(query, str):
             query = [query]
         batch_queries = self.processor.process_queries(query).to(self.model.device)
         with torch.no_grad():
-            outputs = self.model(**batch_queries).to(torch.bfloat16)
-        self._maybe_clear_cuda_cache()
+            outputs = self.model(**batch_queries).to(torch.float32)
         return outputs.cpu()
 
     def embed_image(self, image: Image.Image) -> torch.tensor:
         batch_images = self.processor.process_images(image).to(self.model.device)
         with torch.no_grad():
-            outputs = self.model(**batch_images).to(torch.bfloat16)
-        self._maybe_clear_cuda_cache()
+            outputs = self.model(**batch_images).to(torch.float32)
         return outputs.cpu()
 
     def retrieve(self, query: str, top_k: int | None = None) -> List[str]:
+        if not self.embeddings or not self.meta:
+            return []
         k = self.top_k if top_k is None else top_k
+        k = min(k, len(self.embeddings), len(self.meta))
+        if k <= 0:
+            return []
         query_embedding = self.embed_queries(query)
         scores = self.processor.score_multi_vector(query_embedding, self.embeddings)
         top_k_docs = scores.argsort(axis=1)[0][-k:]
@@ -202,7 +224,7 @@ class ColQwenRetriever:
 
 
 class RetrievePipeline:
-    def __init__(self, device: str = "mps"):
+    def __init__(self, device: str = "cpu"):
         self.text_retriever = BGERetriever(device=device)
         self.visual_retriever = ColQwenRetriever(device=device)
 

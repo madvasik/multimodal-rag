@@ -1,10 +1,13 @@
-import os
+"""Build docs_meta.json for the visual index from PNG layout under images_path. Run from repo root."""
+
 import glob
 import json
-import unicodedata
-from omegaconf import OmegaConf
-from dotenv import load_dotenv
+import os
 import sys
+import unicodedata
+
+from dotenv import load_dotenv
+from omegaconf import OmegaConf
 
 load_dotenv(override=True)
 
@@ -13,7 +16,7 @@ if not VISUAL_CFG or not os.path.exists(VISUAL_CFG):
     sys.exit(1)
 
 
-def build_metadata():
+def build_metadata() -> None:
     try:
         visual_index = OmegaConf.load(VISUAL_CFG)
     except Exception:
@@ -28,7 +31,11 @@ def build_metadata():
         sys.exit(1)
 
     try:
-        pdf_names = [d for d in os.listdir(base_images_path) if os.path.isdir(os.path.join(base_images_path, d))]
+        pdf_names = [
+            d
+            for d in os.listdir(base_images_path)
+            if os.path.isdir(os.path.join(base_images_path, d))
+        ]
     except OSError:
         sys.exit(1)
 
@@ -65,10 +72,15 @@ def build_metadata():
             pass
 
     try:
-        embedding_files = sorted(glob.glob(os.path.join(visual_index.embeddings_path, "*.pt")))
+        embedding_files = sorted(
+            glob.glob(os.path.join(visual_index.embeddings_path, "*.pt"))
+        )
         if embedding_files:
             if len(metadata) != total_images_processed:
-                print(f"Предупреждение: {len(metadata)} записей в метаданных, {total_images_processed} PNG файлов.")
+                print(
+                    f"Предупреждение: {len(metadata)} записей в метаданных, "
+                    f"{total_images_processed} PNG файлов."
+                )
         else:
             print("Предупреждение: Файлы эмбеддингов не найдены.")
     except Exception:
